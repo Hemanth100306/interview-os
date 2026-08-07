@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import candidatesData from "@/data/candidates.json";
 
 export interface Candidate {
   id: string;
@@ -42,105 +43,72 @@ export interface Candidate {
   avatarInitials: string;
 }
 
-const MOCK_CANDIDATES: Candidate[] = [
-  {
-    id: "cand-1",
-    name: "Alex Chen",
-    role: "Senior Backend Engineer",
-    experience: "6 yrs",
-    education: "B.S. Computer Science, Stanford",
-    missionsCompleted: 14,
-    totalMissions: 15,
-    firstTrySuccess: 12,
-    commitDays: 142,
-    status: "Ready for Assessment",
-    progress: 93,
-    badges: ["Strong Candidate", "High Accuracy"],
-    avatarInitials: "AC",
-  },
-  {
-    id: "cand-2",
-    name: "Sophia Rodriguez",
-    role: "Full Stack Engineer",
-    experience: "4 yrs",
-    education: "M.S. Software Engineering, MIT",
-    missionsCompleted: 11,
-    totalMissions: 15,
-    firstTrySuccess: 8,
-    commitDays: 98,
-    status: "Ready for Assessment",
-    progress: 73,
-    badges: ["Needs Improvement", "Skipped Topics"],
-    avatarInitials: "SR",
-  },
-  {
-    id: "cand-3",
-    name: "Marcus Vance",
-    role: "Staff Infrastructure Engineer",
-    experience: "8 yrs",
-    education: "B.S. Electrical & CS, UC Berkeley",
-    missionsCompleted: 15,
-    totalMissions: 15,
-    firstTrySuccess: 14,
-    commitDays: 210,
-    status: "Ready for Assessment",
-    progress: 100,
-    badges: ["Strong Candidate"],
-    avatarInitials: "MV",
-  },
-  {
-    id: "cand-4",
-    name: "Elena Rostova",
-    role: "AI Systems Lead",
-    experience: "5 yrs",
-    education: "M.S. Artificial Intelligence, CMU",
-    missionsCompleted: 13,
-    totalMissions: 15,
-    firstTrySuccess: 11,
-    commitDays: 165,
-    status: "Interview Pending",
-    progress: 86,
-    badges: ["Strong Candidate", "Skipped Topics"],
-    avatarInitials: "ER",
-  },
-  {
-    id: "cand-5",
-    name: "David Park",
-    role: "Frontend Platform Architect",
-    experience: "7 yrs",
-    education: "B.S. Computer Engineering, Waterloo",
-    missionsCompleted: 9,
-    totalMissions: 15,
-    firstTrySuccess: 5,
-    commitDays: 74,
-    status: "Ready for Assessment",
-    progress: 60,
-    badges: ["Needs Improvement"],
-    avatarInitials: "DP",
-  },
-  {
-    id: "cand-6",
-    name: "Amara Okafor",
-    role: "Distributed Systems Specialist",
-    experience: "6 yrs",
-    education: "Ph.D. Distributed Computing, Georgia Tech",
-    missionsCompleted: 14,
-    totalMissions: 15,
-    firstTrySuccess: 13,
-    commitDays: 184,
-    status: "In Review",
-    progress: 93,
-    badges: ["Strong Candidate", "Fast Learner"],
-    avatarInitials: "AO",
-  },
-];
+function getAvatarInitials(name: string): string {
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
+
+function deriveBadges(candidate: (typeof candidatesData.candidates)[number]): Candidate["badges"] {
+  const badges: Candidate["badges"] = [];
+  const { commitDays, missionsCompleted, missionsFirstTry } = candidate.signals;
+  const hasSkipped = candidate.missions.some((m) => "skipped" in m && m.skipped);
+  const firstTryRatio = missionsCompleted > 0 ? missionsFirstTry / missionsCompleted : 0;
+
+  if (firstTryRatio >= 0.65 || (missionsCompleted >= 28 && missionsFirstTry >= 18)) {
+    badges.push("Strong Candidate");
+  }
+
+  if (firstTryRatio < 0.35 || commitDays < 15 || candidate.missions.filter((m) => "passed" in m && !m.passed).length >= 2) {
+    badges.push("Needs Improvement");
+  }
+
+  if (hasSkipped) {
+    badges.push("Skipped Topics");
+  }
+
+  if (firstTryRatio >= 0.85) {
+    badges.push("High Accuracy");
+  } else if (commitDays >= 28 && firstTryRatio >= 0.7) {
+    badges.push("Fast Learner");
+  }
+
+  if (badges.length === 0) {
+    badges.push("Strong Candidate");
+  }
+
+  return badges;
+}
+
+const CANDIDATES: Candidate[] = candidatesData.candidates.map((c) => {
+  const totalMissions = 31;
+  const progress = Math.min(100, Math.round((c.signals.missionsCompleted / totalMissions) * 100));
+
+  return {
+    id: c.member.id,
+    name: c.member.name,
+    role: c.member.jobRole,
+    experience: `${c.member.yearsExperience} yrs`,
+    education: c.member.education,
+    missionsCompleted: c.signals.missionsCompleted,
+    totalMissions,
+    firstTrySuccess: c.signals.missionsFirstTry,
+    commitDays: c.signals.commitDays,
+    status: c.member.status === "COMPLETED" ? "Ready for Assessment" : "In Review",
+    progress,
+    badges: deriveBadges(c),
+    avatarInitials: getAvatarInitials(c.member.name),
+  };
+});
 
 export function CandidateSelection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<string>("All");
 
   const filteredCandidates = useMemo(() => {
-    return MOCK_CANDIDATES.filter((candidate) => {
+    return CANDIDATES.filter((candidate) => {
       const matchesSearch =
         candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         candidate.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -159,6 +127,15 @@ export function CandidateSelection() {
       return true;
     });
   }, [searchQuery, selectedFilter]);
+
+  const readyCount = useMemo(() => {
+    return CANDIDATES.filter((c) => c.status === "Ready for Assessment").length;
+  }, []);
+
+  const avgPassRate = useMemo(() => {
+    const total = CANDIDATES.reduce((acc, c) => acc + c.progress, 0);
+    return (total / CANDIDATES.length).toFixed(1);
+  }, []);
 
   const renderBadge = (badge: Candidate["badges"][number]) => {
     switch (badge) {
@@ -299,7 +276,7 @@ export function CandidateSelection() {
               </div>
               <div>
                 <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-mono">Ready</p>
-                <p className="text-sm font-bold text-white">4 Candidates</p>
+                <p className="text-sm font-bold text-white">{readyCount} Candidates</p>
               </div>
             </div>
 
@@ -309,7 +286,7 @@ export function CandidateSelection() {
               </div>
               <div>
                 <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-mono">Avg Pass Rate</p>
-                <p className="text-sm font-bold text-white">84.5%</p>
+                <p className="text-sm font-bold text-white">{avgPassRate}%</p>
               </div>
             </div>
           </div>
@@ -402,12 +379,14 @@ export function CandidateSelection() {
 
                 {/* Footer Action Button */}
                 <div className="p-4 pt-0">
-                  <Button
-                    className="w-full bg-zinc-900 hover:bg-gradient-to-r hover:from-cyan-500 hover:to-blue-600 hover:text-black text-white font-semibold text-xs border border-white/10 hover:border-transparent transition-all duration-300 cursor-pointer group/btn"
-                  >
-                    Start Interview
-                    <ArrowRight className="ml-1.5 size-3.5 group-hover/btn:translate-x-1 transition-transform" />
-                  </Button>
+                  <Link href={`/interview-plan/${candidate.id}`}>
+                    <Button
+                      className="w-full bg-zinc-900 hover:bg-gradient-to-r hover:from-cyan-500 hover:to-blue-600 hover:text-black text-white font-semibold text-xs border border-white/10 hover:border-transparent transition-all duration-300 cursor-pointer group/btn"
+                    >
+                      Start Interview
+                      <ArrowRight className="ml-1.5 size-3.5 group-hover/btn:translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
                 </div>
               </Card>
             </motion.div>
