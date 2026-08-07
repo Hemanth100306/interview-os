@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Brain,
@@ -79,12 +80,14 @@ export function LandingPage() {
             >
               Sign In
             </Button>
-            <Button
-              size="sm"
-              className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-semibold shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all cursor-pointer"
-            >
-              Get Started
-            </Button>
+            <Link href="/candidates">
+              <Button
+                size="sm"
+                className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-semibold shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all cursor-pointer"
+              >
+                Get Started
+              </Button>
+            </Link>
           </div>
         </div>
       </header>
@@ -135,13 +138,15 @@ export function LandingPage() {
             transition={{ duration: 0.6, delay: 0.3 }}
             className="mt-10 flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
           >
-            <Button
-              size="lg"
-              className="w-full sm:w-auto h-12 px-8 bg-zinc-100 text-black hover:bg-white font-semibold text-base shadow-[0_0_30px_rgba(255,255,255,0.2)] transition-all cursor-pointer group"
-            >
-              Start Interview
-              <ArrowRight className="ml-2 size-4 group-hover:translate-x-1 transition-transform" />
-            </Button>
+            <Link href="/candidates" className="w-full sm:w-auto">
+              <Button
+                size="lg"
+                className="w-full sm:w-auto h-12 px-8 bg-zinc-100 text-black hover:bg-white font-semibold text-base shadow-[0_0_30px_rgba(255,255,255,0.2)] transition-all cursor-pointer group"
+              >
+                Start Interview
+                <ArrowRight className="ml-2 size-4 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </Link>
             <Button
               variant="outline"
               size="lg"
