@@ -440,14 +440,15 @@ export function InterviewPlanView({ candidateId }: InterviewPlanViewProps) {
                   </p>
                 </div>
 
-                <Button
-                  size="lg"
-                  onClick={() => setSessionStarted(true)}
-                  className="w-full sm:w-auto h-12 px-8 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-sm shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all cursor-pointer shrink-0"
-                >
-                  <Play className="mr-2 size-4 fill-black" />
-                  Start Adaptive Interview
-                </Button>
+                <Link href="/interview/demo-session-001" className="w-full sm:w-auto">
+                  <Button
+                    size="lg"
+                    className="w-full sm:w-auto h-12 px-8 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-sm shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all cursor-pointer shrink-0"
+                  >
+                    <Play className="mr-2 size-4 fill-black" />
+                    Start Adaptive Interview
+                  </Button>
+                </Link>
               </div>
 
               {/* Toast / Notification when Start Adaptive Interview is clicked */}
