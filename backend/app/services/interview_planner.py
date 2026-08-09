@@ -73,11 +73,11 @@ class InterviewPlanner:
         31: "Capstone",
     }
 
-    # Difficulty Rules: (Duration Mins, Question Count)
+    # Difficulty Rules: (Duration Mins, Question Count) - Guaranteed Minimum 8 Questions
     DIFFICULTY_RULES: Dict[str, tuple[int, int]] = {
-        "Beginner": (15, 4),
-        "Intermediate": (20, 5),
-        "Advanced": (25, 6),
+        "Beginner": (15, 8),
+        "Intermediate": (20, 8),
+        "Advanced": (25, 8),
         "Expert": (30, 8),
     }
 
