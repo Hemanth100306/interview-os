@@ -22,6 +22,9 @@ class Feedback(BaseModel):
 class InterviewResponse(BaseModel):
     reply: str = Field(..., description="AI interviewer response or question text")
     done: bool = Field(False, description="True if the interview session has completed")
+    metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Interview plan metadata including difficulty, duration, and topics"
+    )
     feedback: Optional[Feedback] = Field(
         None, description="Final evaluation report populated when done is True"
     )
