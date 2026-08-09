@@ -20,111 +20,87 @@ import {
   Terminal,
   Code2,
   Zap,
+  Award,
+  BookOpen,
+  Check,
+  X,
+  RotateCcw,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import candidatesData from "@/data/candidates.json";
+
+const API_ENDPOINT = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/interview";
 
 interface InterviewSessionWorkspaceProps {
   sessionId: string;
 }
 
-interface QuestionData {
-  id: number;
-  dayTitle: string;
-  question: string;
-  expectedDepth: string;
-  contextTag: string;
+interface EvaluationData {
+  score: number;
+  feedback: string;
+  covered_points: string[];
+  missing_points: string[];
 }
 
-const QUESTIONS_SEQUENCE: QuestionData[] = [
-  {
-    id: 1,
-    dayTitle: "Day 7: Embeddings Explained",
-    question: "Can you explain how you generated embeddings for healthcare knowledge base chunks and handled chunking overlaps?",
-    expectedDepth: "Vector Math & Chunking",
-    contextTag: "AI Core",
-  },
-  {
-    id: 2,
-    dayTitle: "Day 10: Retrieval & Matching Engine",
-    question: "How does your hybrid query router decide between structured SQL lookup and vector semantic search when processing complex healthcare claims queries?",
-    expectedDepth: "Hybrid Search & Routing",
-    contextTag: "Architecture",
-  },
-  {
-    id: 3,
-    dayTitle: "Day 13: Function Calling & Structured Outputs",
-    question: "When your LLM generates structured Pydantic tool calls, how do you handle JSON schema validation failures and retries gracefully?",
-    expectedDepth: "API Resilience",
-    contextTag: "Tooling",
-  },
-  {
-    id: 4,
-    dayTitle: "Day 22: Multi-Agent Orchestration",
-    question: "In your multi-agent architecture using CrewAI/LangGraph, how do you prevent cascading loops and state deadlock between specialist agents?",
-    expectedDepth: "Distributed Agents",
-    contextTag: "Orchestration",
-  },
-  {
-    id: 5,
-    dayTitle: "Day 23: Model Context Protocol (MCP)",
-    question: "What specific trade-offs did you encounter when exposing healthcare data tools over MCP versus standard REST endpoints?",
-    expectedDepth: "Protocol Engineering",
-    contextTag: "Integration",
-  },
-  {
-    id: 6,
-    dayTitle: "Day 27: Security & Guardrails",
-    question: "How do you defend against prompt injection attacks that attempt to bypass medical data privacy guardrails?",
-    expectedDepth: "Security Purity",
-    contextTag: "Security",
-  },
-  {
-    id: 7,
-    dayTitle: "Day 28: Docker & Kubernetes Deployment",
-    question: "How are your FastAPI backend pods configured for horizontal auto-scaling during sudden traffic spikes?",
-    expectedDepth: "K8s Infrastructure",
-    contextTag: "DevOps",
-  },
-  {
-    id: 8,
-    dayTitle: "Day 31: Capstone Architecture",
-    question: "How would you evolve this system to handle 100,000 concurrent streaming chat sessions with under 200ms latency?",
-    expectedDepth: "System Scaling",
-    contextTag: "Production",
-  },
-];
+interface MetadataData {
+  difficulty?: string;
+  duration_minutes?: number;
+  total_questions?: number;
+  current_question?: number;
+  topic?: string;
+  expected_points?: string[];
+  evaluation?: EvaluationData;
+  summary_metrics?: {
+    average_score: number;
+    strongest_topics: string[];
+    weakest_topics: string[];
+    recommendation: string;
+  };
+}
+
+interface ChatMessage {
+  id: string;
+  type: "ai_q" | "user_a";
+  qNum?: number;
+  topic?: string;
+  text: string;
+  evaluation?: EvaluationData;
+}
+
+interface FeedbackData {
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  next: string[];
+}
 
 export function InterviewSessionWorkspace({ sessionId }: InterviewSessionWorkspaceProps) {
-  const [qIndex, setQIndex] = useState(1); // Currently on Q2 (index 1)
+  // Extract candidateId from sessionId (e.g., "sess-CAND-001" or "CAND-001")
+  const candidateId = sessionId.replace(/^(sess-|session-)/, "");
+
+  // Find selected candidate or fallback
+  const rawCandidate =
+    candidatesData.candidates.find((c) => c.member.id === candidateId) ||
+    candidatesData.candidates[0];
+
+  const { member } = rawCandidate;
+
+  // Workspace State
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [answerInput, setAnswerInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(872); // 14 mins 32 seconds initial
-  const [chatHistory, setChatHistory] = useState([
-    {
-      type: "ai_q",
-      qNum: 1,
-      text: QUESTIONS_SEQUENCE[0].question,
-      dayTitle: QUESTIONS_SEQUENCE[0].dayTitle,
-    },
-    {
-      type: "user_a",
-      qNum: 1,
-      text: "I used LangChain RecursiveCharacterTextSplitter with a 500-token chunk size and 50-token overlap, then generated 1536-dim embeddings via OpenAI text-embedding-3-small stored in ChromaDB for fast cosine similarity search.",
-      rating: "Depth Rating: 9.2/10 · High Precision",
-    },
-  ]);
-
-  // Insights State
-  const [insights, setInsights] = useState({
-    topicsCovered: "Vector Search, RAG, Hybrid Query Routing",
-    confidenceScore: 92,
-    technicalDepth: 8.8,
-    communicationScore: 94,
-    adaptiveDifficulty: "Senior / Level 4 (+0.2)",
-  });
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [metadata, setMetadata] = useState<MetadataData>({});
+  const [currentQuestionText, setCurrentQuestionText] = useState("");
+  const [isFinished, setIsFinished] = useState(false);
+  const [finalFeedback, setFinalFeedback] = useState<FeedbackData | null>(null);
+  const [lastEvaluation, setLastEvaluation] = useState<EvaluationData | null>(null);
 
   // Live Timer Effect
   useEffect(() => {
@@ -140,177 +116,361 @@ export function InterviewSessionWorkspace({ sessionId }: InterviewSessionWorkspa
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const currentQ = QUESTIONS_SEQUENCE[qIndex] || QUESTIONS_SEQUENCE[0];
+  // 1. Initial Start Interview API Call
+  useEffect(() => {
+    async function startInterview() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(API_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: sessionId,
+            candidate: rawCandidate,
+          }),
+        });
 
-  const handleSubmitAnswer = () => {
-    if (!answerInput.trim()) return;
+        if (!res.ok) {
+          throw new Error(`API Error: ${res.statusText}`);
+        }
 
+        const data = await res.json();
+        setCurrentQuestionText(data.reply);
+        setMetadata(data.metadata || {});
+
+        setChatHistory([
+          {
+            id: `q-1`,
+            type: "ai_q",
+            qNum: data.metadata?.current_question || 1,
+            topic: data.metadata?.topic || "Core Systems",
+            text: data.reply,
+          },
+        ]);
+      } catch (err: any) {
+        console.error("Failed to start interview session:", err);
+        setError(err.message || "Failed to connect to FastAPI backend at localhost:8000.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    startInterview();
+  }, [sessionId, rawCandidate]);
+
+  // 2. Submit Answer API Call
+  const handleSubmitAnswer = async () => {
+    if (!answerInput.trim() || isThinking) return;
+
+    const userText = answerInput.trim();
+    setAnswerInput("");
     setIsThinking(true);
 
-    const submittedText = answerInput;
-    setAnswerInput("");
+    const currentQNum = metadata.current_question || 1;
 
-    setTimeout(() => {
-      // Append Q2 answer & next Q3 question to chat history
-      setChatHistory((prev) => [
-        ...prev,
-        {
-          type: "user_a",
-          qNum: qIndex + 1,
-          text: submittedText,
-          rating: "Depth Rating: 9.4/10 · Exceptional Conceptual Clarity",
-        },
-      ]);
+    // Append user answer immediately to timeline
+    const tempUserMsgId = `user-${Date.now()}`;
+    setChatHistory((prev) => [
+      ...prev,
+      {
+        id: tempUserMsgId,
+        type: "user_a",
+        qNum: currentQNum,
+        text: userText,
+      },
+    ]);
 
-      if (qIndex + 1 < QUESTIONS_SEQUENCE.length) {
-        const nextIdx = qIndex + 1;
-        setQIndex(nextIdx);
+    try {
+      const res = await fetch(API_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: sessionId,
+          message: userText,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`API Error: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+
+      // Extract evaluation data from response metadata
+      const evalData: EvaluationData | undefined = data.metadata?.evaluation;
+      if (evalData) {
+        setLastEvaluation(evalData);
+        // Attach evaluation to previous user message in timeline
+        setChatHistory((prev) =>
+          prev.map((msg) => (msg.id === tempUserMsgId ? { ...msg, evaluation: evalData } : msg))
+        );
+      }
+
+      // If Interview Complete
+      if (data.done) {
+        setIsFinished(true);
+        setFinalFeedback(data.feedback || null);
+        if (data.metadata) {
+          setMetadata(data.metadata);
+        }
+      } else {
+        // Advance to next question
+        setCurrentQuestionText(data.reply);
+        if (data.metadata) {
+          setMetadata(data.metadata);
+        }
 
         setChatHistory((prev) => [
           ...prev,
           {
+            id: `q-${data.metadata?.current_question || currentQNum + 1}`,
             type: "ai_q",
-            qNum: nextIdx + 1,
-            text: QUESTIONS_SEQUENCE[nextIdx].question,
-            dayTitle: QUESTIONS_SEQUENCE[nextIdx].dayTitle,
+            qNum: data.metadata?.current_question || currentQNum + 1,
+            topic: data.metadata?.topic || "Technical Evaluation",
+            text: data.reply,
           },
         ]);
-
-        // Update live insights
-        setInsights((prev) => ({
-          ...prev,
-          confidenceScore: Math.min(99, prev.confidenceScore + 2),
-          technicalDepth: Math.min(10, +(prev.technicalDepth + 0.2).toFixed(1)),
-          adaptiveDifficulty: `Senior / Level 4 (+${(0.2 * (nextIdx + 1)).toFixed(1)})`,
-        }));
       }
-
+    } catch (err: any) {
+      console.error("Error submitting answer:", err);
+      setError("Failed to process answer with backend service.");
+    } finally {
       setIsThinking(false);
-    }, 1800);
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-cyan-500/30 selection:text-cyan-200 flex flex-col">
-      {/* Subtle Background Glow */}
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.12),rgba(255,255,255,0))]" />
+  const totalQuestions = metadata.total_questions || 8;
+  const currentQNum = metadata.current_question || 1;
+  const progressPct = Math.round((currentQNum / totalQuestions) * 100);
 
-      {/* TOP HEADER */}
-      <header className="sticky top-0 z-50 backdrop-blur-xl bg-black/70 border-b border-white/10">
-        <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between gap-4">
-          {/* Candidate Info & Session ID */}
-          <div className="flex items-center gap-4">
+  // Render Loading State
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-6 space-y-4">
+        <Sparkles className="size-10 text-cyan-400 animate-spin" />
+        <p className="text-sm font-mono text-zinc-400 animate-pulse">
+          Connecting to InterviewOS FastAPI Backend (localhost:8000)...
+        </p>
+      </div>
+    );
+  }
+
+  // Render Final Summary Page when Interview Done
+  if (isFinished && finalFeedback) {
+    const avgScore = metadata.summary_metrics?.average_score ?? 8.5;
+    const recommendation = metadata.summary_metrics?.recommendation || finalFeedback.summary;
+    const strengths = metadata.summary_metrics?.strongest_topics || finalFeedback.strengths;
+    const gaps = metadata.summary_metrics?.weakest_topics || finalFeedback.gaps;
+
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-cyan-500 selection:text-black">
+        {/* Header */}
+        <header className="sticky top-0 z-50 border-b border-white/10 bg-zinc-950/80 backdrop-blur-xl px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <Link
               href="/candidates"
-              className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors text-xs font-medium pr-3 border-r border-white/10"
+              className="p-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition-colors"
             >
-              <ArrowLeft className="size-3.5" />
-              <span className="hidden sm:inline">Exit Session</span>
+              <ArrowLeft className="size-4" />
             </Link>
-
-            <div className="flex items-center gap-3">
-              <div className="size-8 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-900 border border-white/15 flex items-center justify-center text-xs font-bold text-cyan-400">
-                SJ
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-white leading-none">Sarah Johnson</h1>
-                <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
-                  SESSION // <span className="text-cyan-400 font-semibold">{sessionId}</span>
-                </p>
-              </div>
+            <div className="flex items-center gap-2">
+              <Cpu className="size-5 text-cyan-400" />
+              <span className="font-bold text-sm tracking-wide bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
+                InterviewOS
+              </span>
             </div>
           </div>
+          <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/40 text-xs py-1 px-3">
+            Assessment Completed
+          </Badge>
+        </header>
 
-          {/* Center Progress & Topic Badges */}
-          <div className="hidden lg:flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900/80 border border-white/10 text-xs">
-              <span className="text-zinc-400 font-mono">Progress:</span>
-              <span className="font-bold text-cyan-400 font-mono">{qIndex + 1} / 8</span>
+        <main className="max-w-4xl mx-auto px-6 py-12 space-y-8">
+          {/* Summary Hero Card */}
+          <Card className="border border-cyan-500/30 bg-gradient-to-b from-zinc-900/90 via-zinc-950 to-zinc-950 text-white shadow-[0_0_50px_rgba(6,182,212,0.15)] overflow-hidden">
+            <CardHeader className="text-center space-y-3 pb-6 border-b border-white/5">
+              <div className="mx-auto size-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.3)]">
+                <Award className="size-8" />
+              </div>
+              <CardTitle className="text-2xl font-black text-white">
+                Technical Interview Summary
+              </CardTitle>
+              <CardDescription className="text-zinc-400 text-xs max-w-md mx-auto">
+                Final adaptive evaluation report for candidate <strong>{member.name}</strong> ({member.jobRole}).
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="p-8 space-y-8">
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-5 rounded-xl border border-white/10 bg-white/5 text-center space-y-1">
+                  <p className="text-[11px] font-mono text-zinc-400 uppercase">Average Score</p>
+                  <p className="text-3xl font-black text-cyan-400">{avgScore} <span className="text-xs text-zinc-500">/ 10</span></p>
+                </div>
+                <div className="p-5 rounded-xl border border-white/10 bg-white/5 text-center space-y-1">
+                  <p className="text-[11px] font-mono text-zinc-400 uppercase">Duration</p>
+                  <p className="text-3xl font-black text-purple-400">{formatTimer(elapsedSeconds)}</p>
+                </div>
+                <div className="p-5 rounded-xl border border-white/10 bg-white/5 text-center space-y-1">
+                  <p className="text-[11px] font-mono text-zinc-400 uppercase">Difficulty Tier</p>
+                  <p className="text-2xl font-bold text-amber-400">{metadata.difficulty || "Expert"}</p>
+                </div>
+              </div>
+
+              {/* Recommendation Banner */}
+              <div className="p-5 rounded-xl border border-cyan-500/40 bg-cyan-950/30 space-y-2">
+                <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                  <UserCheck className="size-4" /> Recommendation
+                </h4>
+                <p className="text-sm font-medium text-white">{recommendation}</p>
+              </div>
+
+              {/* Strengths & Gaps Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Strengths */}
+                <div className="p-5 rounded-xl border border-emerald-500/30 bg-emerald-950/20 space-y-3">
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                    <CheckCircle2 className="size-4" /> Strongest Competencies
+                  </h4>
+                  <ul className="space-y-2 text-xs text-zinc-300">
+                    {strengths.map((s, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <Check className="size-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Gaps */}
+                <div className="p-5 rounded-xl border border-amber-500/30 bg-amber-950/20 space-y-3">
+                  <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                    <AlertCircle className="size-4" /> Identified Gap Areas
+                  </h4>
+                  <ul className="space-y-2 text-xs text-zinc-300">
+                    {gaps.map((g, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <X className="size-3.5 text-amber-400 shrink-0 mt-0.5" />
+                        <span>{g}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link href="/candidates" className="w-full sm:w-auto">
+                  <Button size="lg" className="w-full sm:w-auto px-8 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-sm">
+                    Back to Candidate Selection
+                  </Button>
+                </Link>
+                <Link href={`/interview-plan/${candidateId}`} className="w-full sm:w-auto">
+                  <Button variant="outline" size="lg" className="w-full sm:w-auto px-8 border-white/20 bg-white/5 hover:bg-white/10 text-white font-medium text-sm">
+                    <RotateCcw className="mr-2 size-4" /> View Analysis Plan
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  // Active Session Workspace View
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-cyan-500 selection:text-black flex flex-col">
+      {/* Top Navigation Header */}
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-zinc-950/80 backdrop-blur-xl px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/candidates"
+            className="p-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="size-4" />
+          </Link>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm text-white">{member.name}</span>
+              <span className="text-zinc-500 text-xs">•</span>
+              <span className="text-xs text-zinc-400 font-mono">{member.jobRole}</span>
             </div>
-
-            <Badge variant="glow" className="text-xs font-mono py-1 px-3">
-              <Layers className="size-3 mr-1.5 inline" />
-              {currentQ.dayTitle}
-            </Badge>
-
-            <Badge className="border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-xs font-mono py-1 px-3">
-              Adaptive L4
-            </Badge>
+            <p className="text-[11px] font-mono text-zinc-500">Session ID: {sessionId}</p>
           </div>
+        </div>
 
-          {/* Right Timer Indicator */}
+        {/* Center Progress & Timer */}
+        <div className="hidden md:flex items-center gap-6">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-white/10 font-mono text-xs text-emerald-400 shadow-inner">
-              <span className="size-2 rounded-full bg-emerald-500 animate-ping" />
-              <Clock className="size-3.5 text-zinc-400" />
-              <span>{formatTimer(elapsedSeconds)}</span>
+            <span className="text-xs font-mono text-zinc-400">Progress:</span>
+            <div className="w-32">
+              <Progress value={progressPct} className="h-2 bg-zinc-800" />
             </div>
+            <span className="text-xs font-mono font-bold text-cyan-400">
+              {currentQNum} / {totalQuestions}
+            </span>
           </div>
+
+          <div className="h-4 w-px bg-white/10" />
+
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-950/40 text-cyan-300 text-xs font-mono">
+            <Clock className="size-3.5 text-cyan-400" />
+            <span>{formatTimer(elapsedSeconds)}</span>
+          </div>
+
+          <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-xs">
+            {metadata.difficulty || "Expert"}
+          </Badge>
+        </div>
+
+        {/* Right Badge */}
+        <div className="flex items-center gap-2">
+          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-xs flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Live Backend Connected
+          </Badge>
         </div>
       </header>
 
-      {/* MAIN WORKSPACE GRID */}
-      <div className="flex-1 max-w-[1600px] w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
-        {/* MAIN AREA (8 Cols) */}
-        <main className="lg:col-span-8 flex flex-col space-y-6">
-          {/* Active Question Card (AI Interviewer) */}
-          <Card className="border-white/10 bg-zinc-950/80 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-6 pointer-events-none opacity-10">
-              <Brain className="size-32 text-cyan-400" />
-            </div>
-
-            <CardHeader className="pb-3 border-b border-white/5 bg-zinc-900/50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="size-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-xs font-bold">
-                    AI
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-white">Senior Technical Interviewer</span>
-                    <span className="text-[10px] text-zinc-500 block font-mono">
-                      Question {qIndex + 1} of 8 • {currentQ.contextTag} Domain
-                    </span>
-                  </div>
-                </div>
-                <Badge variant="outline" className="text-[10px] font-mono border-zinc-700">
-                  Target Depth: High
-                </Badge>
+      {/* Main Grid Workspace */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left 2 Columns: AI Card + Conversation Timeline */}
+        <div className="lg:col-span-2 space-y-6 flex flex-col justify-between">
+          {/* Top Active AI Question Card */}
+          <Card className="border border-cyan-500/30 bg-gradient-to-br from-zinc-900/90 via-zinc-950 to-zinc-950 text-white shadow-[0_0_30px_rgba(6,182,212,0.1)]">
+            <CardHeader className="pb-3 border-b border-white/5 flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Brain className="size-5 text-cyan-400" />
+                <CardTitle className="text-base font-bold text-white">
+                  Active Question #{currentQNum}
+                </CardTitle>
               </div>
+              <Badge className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 font-mono text-[11px]">
+                {metadata.topic || "Core Systems"}
+              </Badge>
             </CardHeader>
 
-            <CardContent className="p-6 space-y-4">
-              <div className="space-y-2">
-                <p className="text-xs font-mono text-cyan-400">// ACTIVE QUESTION</p>
-                <h2 className="text-lg sm:text-xl font-semibold text-white leading-relaxed">
-                  &quot;{currentQ.question}&quot;
-                </h2>
-              </div>
+            <CardContent className="pt-4 space-y-4">
+              <p className="text-sm md:text-base text-zinc-100 font-medium leading-relaxed">
+                {currentQuestionText}
+              </p>
 
-              {/* Previous Conversation Log Accordion/List */}
-              {chatHistory.length > 0 && (
-                <div className="pt-4 border-t border-white/5 space-y-3">
-                  <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
-                    Conversation History
+              {/* Expected Rubric Points Preview */}
+              {metadata.expected_points && metadata.expected_points.length > 0 && (
+                <div className="pt-2 border-t border-white/5 space-y-1.5">
+                  <p className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Target className="size-3.5 text-cyan-400" /> Expected Evaluation Rubric Points:
                   </p>
-                  <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                    {chatHistory.map((item, idx) => (
-                      <div key={idx} className="text-xs space-y-1 font-mono">
-                        {item.type === "ai_q" ? (
-                          <div className="flex items-start gap-2 text-cyan-300/90">
-                            <span className="text-cyan-500 font-bold shrink-0">Q{item.qNum}:</span>
-                            <span>{item.text}</span>
-                          </div>
-                        ) : (
-                          <div className="pl-4 p-2.5 rounded-lg bg-zinc-900/70 border border-white/5 text-zinc-300 space-y-1">
-                            <div className="flex items-center justify-between text-[10px] text-zinc-500">
-                              <span>Candidate Answer (Q{item.qNum})</span>
-                              {item.rating && (
-                                <span className="text-emerald-400 font-mono">{item.rating}</span>
-                              )}
-                            </div>
-                            <p className="font-sans text-xs text-zinc-200">&quot;{item.text}&quot;</p>
-                          </div>
-                        )}
-                      </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {metadata.expected_points.map((pt, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2 py-0.5 rounded-md border border-white/10 bg-white/5 text-[11px] text-zinc-300 font-mono"
+                      >
+                        • {pt}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -318,172 +478,139 @@ export function InterviewSessionWorkspace({ sessionId }: InterviewSessionWorkspa
             </CardContent>
           </Card>
 
-          {/* Candidate Answer Textarea & Controls */}
-          <Card className="border-white/10 bg-zinc-950/90 shadow-2xl flex-1 flex flex-col justify-between">
-            <CardHeader className="pb-2 border-b border-white/5 bg-zinc-900/30">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white flex items-center gap-2">
-                  <Code2 className="size-4 text-cyan-400" />
-                  Your Response
-                </span>
-                <span className="text-[10px] font-mono text-zinc-500">
-                  {answerInput.length} chars • {answerInput.trim().split(/\s+/).filter(Boolean).length} words
-                </span>
-              </div>
-            </CardHeader>
-
-            <CardContent className="p-4 flex-1 flex flex-col space-y-4">
-              <textarea
-                value={answerInput}
-                onChange={(e) => setAnswerInput(e.target.value)}
-                disabled={isThinking}
-                placeholder="Type your technical answer here... Explain your architectural choices, data structures, trade-offs, and failure recovery handling in detail."
-                className="w-full h-40 p-4 bg-zinc-900/80 border border-white/10 rounded-xl text-xs sm:text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 resize-none font-sans leading-relaxed transition-all"
-              />
-
-              {/* AI Thinking Animation State */}
-              <AnimatePresence>
-                {isThinking && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs font-mono flex items-center justify-between shadow-[0_0_20px_rgba(6,182,212,0.15)]"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="size-4 animate-spin text-cyan-400" />
-                      <span>AI Thinking... Analyzing technical depth & scaling follow-up question</span>
+          {/* Conversation & Answer Timeline */}
+          <div className="space-y-4 flex-1 overflow-y-auto max-h-[400px] pr-2">
+            {chatHistory.map((item) => (
+              <div key={item.id} className="space-y-2">
+                {item.type === "ai_q" ? (
+                  <div className="p-4 rounded-xl border border-white/10 bg-white/5 space-y-1">
+                    <div className="flex items-center justify-between text-[11px] font-mono text-cyan-400">
+                      <span>AI Interviewer • Q{item.qNum}</span>
+                      <span>{item.topic}</span>
                     </div>
-                    <span className="size-2 rounded-full bg-cyan-400 animate-ping" />
-                  </motion.div>
+                    <p className="text-xs text-zinc-200">{item.text}</p>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-cyan-500/30 bg-cyan-950/20 ml-8 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-mono text-cyan-300">
+                      <span>Candidate Response (Q{item.qNum})</span>
+                      {item.evaluation && (
+                        <span className="font-bold text-emerald-400">
+                          Score: {item.evaluation.score} / 10
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-100">{item.text}</p>
+
+                    {/* Live Evaluation Breakdown Card */}
+                    {item.evaluation && (
+                      <div className="pt-2 border-t border-cyan-500/20 space-y-2 text-[11px]">
+                        <p className="text-emerald-300 font-medium flex items-center gap-1.5">
+                          <CheckCircle2 className="size-3.5" /> {item.evaluation.feedback}
+                        </p>
+                        {item.evaluation.covered_points.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            <span className="text-zinc-400">Covered:</span>
+                            {item.evaluation.covered_points.map((pt, idx) => (
+                              <span key={idx} className="text-emerald-400 font-mono">
+                                [{pt}]
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {item.evaluation.missing_points.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            <span className="text-zinc-400">Missing:</span>
+                            {item.evaluation.missing_points.map((pt, idx) => (
+                              <span key={idx} className="text-amber-400 font-mono">
+                                [{pt}]
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
-              </AnimatePresence>
-
-              {/* Action Toolbar */}
-              <div className="flex items-center justify-between pt-2">
-                <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
-                  <Terminal className="size-3.5" /> Markdown & Code blocks supported
-                </div>
-
-                <Button
-                  onClick={handleSubmitAnswer}
-                  disabled={!answerInput.trim() || isThinking}
-                  className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-xs px-6 h-10 shadow-[0_0_20px_rgba(6,182,212,0.3)] cursor-pointer disabled:opacity-50"
-                >
-                  <Send className="mr-1.5 size-3.5" />
-                  Submit Answer
-                </Button>
               </div>
-            </CardContent>
-          </Card>
-        </main>
+            ))}
 
-        {/* RIGHT SIDEBAR (4 Cols) */}
-        <aside className="lg:col-span-4 space-y-6">
-          {/* Live Performance Insights Card */}
-          <Card className="border-white/10 bg-zinc-950/80 shadow-2xl">
+            {isThinking && (
+              <div className="p-4 rounded-xl border border-cyan-500/40 bg-cyan-950/30 flex items-center gap-3 text-cyan-300 text-xs animate-pulse">
+                <Sparkles className="size-4 animate-spin text-cyan-400" />
+                <span>AI AnswerEvaluator & QuestionGenerator processing response...</span>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Candidate Answer Input Box */}
+          <div className="space-y-3">
+            <textarea
+              value={answerInput}
+              onChange={(e) => setAnswerInput(e.target.value)}
+              placeholder="Type your technical response here (e.g. explain architecture, tradeoffs, implementation details)..."
+              disabled={isThinking}
+              rows={4}
+              className="w-full rounded-xl border border-white/10 bg-zinc-900/90 p-4 text-xs md:text-sm text-white placeholder-zinc-500 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 resize-none font-sans"
+            />
+
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-zinc-500 font-mono">
+                Press Submit Answer to send to FastAPI backend endpoint
+              </span>
+              <Button
+                onClick={handleSubmitAnswer}
+                disabled={!answerInput.trim() || isThinking}
+                className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs px-6 py-2 h-10 shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all cursor-pointer"
+              >
+                <Send className="mr-2 size-3.5" />
+                {isThinking ? "Evaluating..." : "Submit Answer"}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right 1 Column: Live Session Insights & Timeline Sidebar */}
+        <div className="space-y-6">
+          {/* Insights Card */}
+          <Card className="border border-white/10 bg-zinc-900/60 backdrop-blur-xl text-white">
             <CardHeader className="pb-3 border-b border-white/5">
-              <CardTitle className="text-base font-bold text-white flex items-center gap-2">
-                <BarChart3 className="size-4 text-cyan-400" />
-                Live Interview Insights
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Real-time scoring metrics updated by AI.
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <BarChart3 className="size-4 text-cyan-400" /> Live Interview Signals
+                </CardTitle>
+                <Badge className="bg-cyan-500/10 text-cyan-400 border-cyan-500/20 text-[10px]">
+                  Real-Time
+                </Badge>
+              </div>
             </CardHeader>
             <CardContent className="pt-4 space-y-4 text-xs">
-              {/* Topics Covered */}
-              <div className="p-3 rounded-lg bg-zinc-900/60 border border-white/5 space-y-1">
-                <p className="text-[10px] text-zinc-500 font-mono uppercase">Topics Covered</p>
-                <p className="font-medium text-cyan-300 leading-normal">{insights.topicsCovered}</p>
+              <div className="space-y-1">
+                <span className="text-zinc-400 text-[11px]">Last Score Evaluation:</span>
+                <p className="font-bold text-emerald-400 text-sm">
+                  {lastEvaluation ? `${lastEvaluation.score} / 10` : "Awaiting First Submission"}
+                </p>
               </div>
 
-              {/* Confidence Score */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-zinc-400">Confidence Score</span>
-                  <span className="text-emerald-400 font-bold">{insights.confidenceScore}%</span>
+              {lastEvaluation && (
+                <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-950/20 space-y-1.5">
+                  <p className="text-emerald-300 text-[11px] font-medium">{lastEvaluation.feedback}</p>
                 </div>
-                <Progress value={insights.confidenceScore} />
-              </div>
+              )}
 
-              {/* Technical Depth & Communication Grid */}
-              <div className="grid grid-cols-2 gap-2 font-mono">
-                <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-white/5">
-                  <p className="text-[10px] text-zinc-500 uppercase">Technical Depth</p>
-                  <p className="text-sm font-bold text-white mt-0.5">{insights.technicalDepth} / 10</p>
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <div className="flex items-center justify-between text-zinc-300">
+                  <span>Questions Progress</span>
+                  <span className="font-mono text-cyan-400 font-bold">
+                    {currentQNum} / {totalQuestions}
+                  </span>
                 </div>
-                <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-white/5">
-                  <p className="text-[10px] text-zinc-500 uppercase">Communication</p>
-                  <p className="text-sm font-bold text-white mt-0.5">{insights.communicationScore}%</p>
-                </div>
-              </div>
-
-              {/* Adaptive Difficulty */}
-              <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-between">
-                <span className="text-[11px] text-indigo-300 font-mono">Adaptive Difficulty</span>
-                <span className="text-xs font-bold text-indigo-200 font-mono">
-                  {insights.adaptiveDifficulty}
-                </span>
+                <Progress value={progressPct} className="h-1.5 bg-zinc-800" />
               </div>
             </CardContent>
           </Card>
-
-          {/* Question Timeline Widget */}
-          <Card className="border-white/10 bg-zinc-950/80 shadow-2xl">
-            <CardHeader className="pb-3 border-b border-white/5">
-              <CardTitle className="text-base font-bold text-white flex items-center gap-2">
-                <Target className="size-4 text-emerald-400" />
-                Question Timeline
-              </CardTitle>
-              <CardDescription className="text-xs">
-                8-question adaptive assessment roadmap.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="pt-4 space-y-2.5 font-mono text-xs">
-              {QUESTIONS_SEQUENCE.map((q, idx) => {
-                const isCompleted = idx < qIndex;
-                const isActive = idx === qIndex;
-
-                return (
-                  <div
-                    key={q.id}
-                    className={`p-2.5 rounded-lg border transition-all flex items-center justify-between ${
-                      isActive
-                        ? "border-cyan-500/50 bg-cyan-500/10 text-white shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                        : isCompleted
-                        ? "border-emerald-500/30 bg-emerald-500/5 text-zinc-300"
-                        : "border-white/5 bg-zinc-900/40 text-zinc-500"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 truncate">
-                      <span
-                        className={`size-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                          isActive
-                            ? "bg-cyan-400 text-black animate-pulse"
-                            : isCompleted
-                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
-                            : "bg-zinc-800 text-zinc-500"
-                        }`}
-                      >
-                        {isCompleted ? "✓" : isActive ? "●" : "○"}
-                      </span>
-                      <span className="truncate">
-                        Q{q.id}: {q.dayTitle.split(":")[1] || q.dayTitle}
-                      </span>
-                    </div>
-
-                    <span className="text-[10px] shrink-0 font-mono text-zinc-500">
-                      {isCompleted ? "Passed" : isActive ? "Active" : "Pending"}
-                    </span>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
