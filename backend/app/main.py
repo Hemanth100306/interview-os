@@ -8,13 +8,20 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for localhost:3000 (and 127.0.0.1:3000)
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
+import os
+
+# Enable CORS for localhost and production deployments
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+else:
+    origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "*",  # Production fallback for Vercel/Render hosting
+    ]
 
 app.add_middleware(
     CORSMiddleware,
