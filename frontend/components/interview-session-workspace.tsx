@@ -33,7 +33,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import candidatesData from "@/data/candidates.json";
 
-const API_ENDPOINT = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/interview";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_ENDPOINT = `${API_BASE}/api/interview`;
 
 interface InterviewSessionWorkspaceProps {
   sessionId: string;
