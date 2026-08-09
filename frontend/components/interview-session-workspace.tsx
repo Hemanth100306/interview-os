@@ -430,7 +430,7 @@ export function InterviewSessionWorkspace({ sessionId }: InterviewSessionWorkspa
         <div className="flex items-center gap-2">
           <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-xs flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Live Backend Connected
+            Adaptive Session Active
           </Badge>
         </div>
       </header>
@@ -458,11 +458,11 @@ export function InterviewSessionWorkspace({ sessionId }: InterviewSessionWorkspa
                 {currentQuestionText}
               </p>
 
-              {/* Expected Rubric Points Preview */}
+              {/* Assessment Focus Topics Preview */}
               {metadata.expected_points && metadata.expected_points.length > 0 && (
                 <div className="pt-2 border-t border-white/5 space-y-1.5">
                   <p className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Target className="size-3.5 text-cyan-400" /> Expected Evaluation Rubric Points:
+                    <Target className="size-3.5 text-cyan-400" /> Key Assessment Concepts:
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {metadata.expected_points.map((pt, idx) => (
@@ -539,7 +539,7 @@ export function InterviewSessionWorkspace({ sessionId }: InterviewSessionWorkspa
             {isThinking && (
               <div className="p-4 rounded-xl border border-cyan-500/40 bg-cyan-950/30 flex items-center gap-3 text-cyan-300 text-xs animate-pulse">
                 <Sparkles className="size-4 animate-spin text-cyan-400" />
-                <span>AI AnswerEvaluator & QuestionGenerator processing response...</span>
+                <span>Analyzing technical response & preparing next question...</span>
               </div>
             )}
           </div>
@@ -557,7 +557,7 @@ export function InterviewSessionWorkspace({ sessionId }: InterviewSessionWorkspa
 
             <div className="flex items-center justify-between">
               <span className="text-[11px] text-zinc-500 font-mono">
-                Press Submit Answer to send to FastAPI backend endpoint
+                Provide technical detail to demonstrate domain depth
               </span>
               <Button
                 onClick={handleSubmitAnswer}
